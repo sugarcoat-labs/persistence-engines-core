@@ -1,0 +1,77 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+
+    <!--
+    =======================================================================
+    TECHNICAL SPECIFICATION - PLUGGABLE MODULE
+    =======================================================================
+    Project Name : persistence-engines-core
+    Type         : Pluggable & Reusable JPMS JAR Module
+    Description  : Provides lightweight, high-performance, and thread-safe
+    persistence engines for Hexagonal Architecture (without
+    framework overhead).
+
+    Architecture & Compliance Requirements:
+    - Runtime Environment : Java 24+ (Strict minimum compiler compliance & JPMS)
+    - Framework Policy    : Heavy frameworks (Spring Boot, Micronaut, Quarkus)
+      and external database drivers are explicitly excluded to eliminate runtime
+      overhead.
+    - Concurrency Model   : Virtual-thread-friendly striped ReentrantLock
+      partitions and lock-free unmodifiable snapshots.
+    - Dependency Policy   : ZERO compile/runtime dependencies. Only testing
+      libraries (JUnit 5 & AssertJ) are permitted, and strictly restricted to
+      <scope>test</scope> so the final production JAR remains 100% pure JDK.
+    =======================================================================
+    -->
+
+    <groupId>com.sugarcoatlabs</groupId>
+    <artifactId>persistence-engines-core</artifactId>
+    <version>1.0.0-SNAPSHOT</version>
+    <packaging>jar</packaging>
+
+    <name>persistence-engines-core</name>
+    <description>A lightweight, high-performance, and zero-dependency Java core module providing thread-safe persistence engines for Hexagonal Architecture.</description>
+
+    <properties>
+        <maven.compiler.release>24</maven.compiler.release>
+        <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+        <junit.version>5.11.4</junit.version>
+        <assertj.version>3.27.3</assertj.version>
+    </properties>
+
+    <dependencies>
+        <dependency>
+            <groupId>org.junit.jupiter</groupId>
+            <artifactId>junit-jupiter</artifactId>
+            <version>${junit.version}</version>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.assertj</groupId>
+            <artifactId>assertj-core</artifactId>
+            <version>${assertj.version}</version>
+            <scope>test</scope>
+        </dependency>
+    </dependencies>
+
+    <build>
+        <plugins>
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-compiler-plugin</artifactId>
+                <version>3.13.0</version>
+                <configuration>
+                    <release>${maven.compiler.release}</release>
+                </configuration>
+            </plugin>
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-surefire-plugin</artifactId>
+                <version>3.5.2</version>
+            </plugin>
+        </plugins>
+    </build>
+</project>
