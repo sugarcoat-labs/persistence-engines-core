@@ -1,5 +1,7 @@
 package com.sugarcoatlabs.persistence.state;
 
+import com.sugarcoatlabs.persistence.impl.InMemoryStateStore;
+
 /**
  * Concrete TCK verification suite for {@link InMemoryStateStore}.
  *

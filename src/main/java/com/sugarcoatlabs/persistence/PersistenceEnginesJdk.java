@@ -1,8 +1,8 @@
 package com.sugarcoatlabs.persistence;
 
 import com.sugarcoatlabs.persistence.event.EventStreamEngine;
-import com.sugarcoatlabs.persistence.event.InMemoryEventStream;
-import com.sugarcoatlabs.persistence.state.InMemoryStateStore;
+import com.sugarcoatlabs.persistence.impl.InMemoryEventStream;
+import com.sugarcoatlabs.persistence.impl.InMemoryStateStore;
 import com.sugarcoatlabs.persistence.state.StateStoreEngine;
 
 /**

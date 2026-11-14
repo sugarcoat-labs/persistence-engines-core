@@ -30,6 +30,7 @@ a fast persistence core for integration testing.
     - [Local Build, Test & Javadoc Verification](#local-build-test--javadoc-verification)
     - [Client Dependency Declaration](#client-dependency-declaration)
 - [🧪 Technical Specifications & Concurrency Guarantees](#-technical-specifications--concurrency-guarantees)
+- [🔌 Building Database Implementations](#-building-database-implementations)
 - [📄 License](#-license)
 
 ---
@@ -413,6 +414,19 @@ implementation 'com.sugarcoatlabs:persistence-engines-core:1.0.0-SNAPSHOT'
   `com.sugarcoatlabs.persistence.lifecycle` package for deterministic
   `@BeforeEach` resets in TCK suites without exposing destructive wipe
   operations to production callers.
+
+---
+
+## 🔌 Building Database Implementations
+
+**One Behavioral Contract, Many Technology Realizations.**
+
+`persistence-engines-core` serves as the foundational specification and Technology Compatibility Kit (TCK) for the **sugarcoat-labs** persistence ecosystem. External technology realizations (such as `persistence-engines-dynamodb`, `persistence-engines-postgres`, or `persistence-engines-mongodb`) implement the exported engine interfaces and import the filtered TCK `test-jar` (`com.sugarcoatlabs.persistence.tck.**`) to verify 100% behavioral parity without duplicating contract tests.
+
+See the **[Implementation Guide](IMPLEMENTATION_GUIDE.md)** for full details on:
+- JPMS visibility boundaries and forbidden internal types
+- Mandatory behavioral invariants (OCC, global idempotency, 1-indexed sequences, read-your-writes consistency)
+- Maven `test-jar` export/import configuration and minimal `pom.xml` templates
 
 ---
 

@@ -31,4 +31,5 @@ module com.sugarcoatlabs.persistence {
     exports com.sugarcoatlabs.persistence.state;
     exports com.sugarcoatlabs.persistence.exception;
     exports com.sugarcoatlabs.persistence.lifecycle;
+    exports com.sugarcoatlabs.persistence.impl;
 }

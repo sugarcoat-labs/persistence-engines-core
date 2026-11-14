@@ -1,6 +1,7 @@
-package com.sugarcoatlabs.persistence.state;
+package com.sugarcoatlabs.persistence.impl;
 
 import com.sugarcoatlabs.persistence.lifecycle.ResettableEngine;
+import com.sugarcoatlabs.persistence.state.StateStoreEngine;
 
 import java.util.List;
 import java.util.Map;
