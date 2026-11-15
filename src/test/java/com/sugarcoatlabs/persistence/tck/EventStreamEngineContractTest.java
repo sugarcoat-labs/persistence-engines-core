@@ -1,5 +1,6 @@
-package com.sugarcoatlabs.persistence.event;
+package com.sugarcoatlabs.persistence.tck;
 
+import com.sugarcoatlabs.persistence.event.EventStreamEngine;
 import com.sugarcoatlabs.persistence.lifecycle.ResettableEngine;
 import com.sugarcoatlabs.persistence.exception.DuplicateEventException;
 import com.sugarcoatlabs.persistence.exception.OptimisticConcurrencyException;

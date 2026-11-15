@@ -1,6 +1,7 @@
-package com.sugarcoatlabs.persistence.state;
+package com.sugarcoatlabs.persistence.tck;
 
 import com.sugarcoatlabs.persistence.lifecycle.ResettableEngine;
+import com.sugarcoatlabs.persistence.state.StateStoreEngine;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;

@@ -6,13 +6,14 @@
 
     <!--
     =======================================================================
-    TECHNICAL SPECIFICATION - PLUGGABLE MODULE
+    TECHNICAL SPECIFICATION - PLUGGABLE MODULE & TCK EXPORTER
     =======================================================================
     Project Name : persistence-engines-core
-    Type         : Pluggable & Reusable JPMS JAR Module
+    Type         : Pluggable & Reusable JPMS JAR Module + TCK Test-JAR
     Description  : Provides lightweight, high-performance, and thread-safe
     persistence engines for Hexagonal Architecture (without
-    framework overhead).
+    framework overhead), plus the portable Technology Compatibility Kit
+    (TCK) for external database realizations.
 
     Architecture & Compliance Requirements:
     - Runtime Environment : Java 24+ (Strict minimum compiler compliance & JPMS)
@@ -24,6 +25,14 @@
     - Dependency Policy   : ZERO compile/runtime dependencies. Only testing
       libraries (JUnit 5 & AssertJ) are permitted, and strictly restricted to
       <scope>test</scope> so the final production JAR remains 100% pure JDK.
+    - TCK Export Policy   : Packages ONLY abstract contract test suites under
+      `com/sugarcoatlabs/persistence/tck/**` into the published `test-jar`,
+      excluding all pure-JDK-specific tests.
+    - Local & Repository Publication:
+      Run `mvn clean install` to build and publish both artifacts to the
+      local Maven repository (`~/.m2/repository`):
+        1. `persistence-engines-core-1.0.0-SNAPSHOT.jar` (Main JPMS module)
+        2. `persistence-engines-core-1.0.0-SNAPSHOT-tests.jar` (Filtered TCK)
     =======================================================================
     -->
 
@@ -71,6 +80,24 @@
                 <groupId>org.apache.maven.plugins</groupId>
                 <artifactId>maven-surefire-plugin</artifactId>
                 <version>3.5.2</version>
+            </plugin>
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-jar-plugin</artifactId>
+                <version>3.4.2</version>
+                <executions>
+                    <execution>
+                        <id>default-test-jar</id>
+                        <goals>
+                            <goal>test-jar</goal>
+                        </goals>
+                        <configuration>
+                            <includes>
+                                <include>com/sugarcoatlabs/persistence/tck/**</include>
+                            </includes>
+                        </configuration>
+                    </execution>
+                </executions>
             </plugin>
         </plugins>
     </build>

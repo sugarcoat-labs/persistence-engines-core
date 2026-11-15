@@ -2,6 +2,7 @@ package com.sugarcoatlabs.persistence.event;
 
 import com.sugarcoatlabs.persistence.exception.OptimisticConcurrencyException;
 import com.sugarcoatlabs.persistence.impl.InMemoryEventStream;
+import com.sugarcoatlabs.persistence.tck.EventStreamEngineContractTest;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
