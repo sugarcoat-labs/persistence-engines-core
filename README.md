@@ -299,6 +299,13 @@ Keep your application's **Domain Ports** (`TapEventPublishingPort`,
 strictly inside your application. Use `persistence-engines-core` exclusively
 inside your **Stage-1 Outbound Adapters**:
 
+### 1. Event Store Adapter (`EventStreamEngine`)
+
+An event store adapter bridges your domain ports (`TapEventPublishingPort`,
+`TapEventFetchingPort`) to `EventStreamEngine<String, UUID, TapEvent>`,
+extracting the stream partition key (`event.tapId()`) and translating core
+persistence exceptions into domain-specific errors at the adapter boundary:
+
 ```java
 @Component
 @Profile("stage-1")
@@ -339,6 +346,48 @@ public class InMemoryTapEventStore
     }
 }
 ```
+
+### 2. Configuration Registry Adapter (`StateStoreEngine`)
+
+Similarly, a registry adapter bridges your domain port (`TapRegistryPort`) to
+`StateStoreEngine<String, Tap>`, extracting the entity key (`tap.id()`) and
+enforcing domain-level uniqueness rules (such as preventing duplicate device
+registrations) at the adapter boundary:
+
+```java
+@Component
+@Profile("stage-1")
+public class InMemoryTapRegistry implements TapRegistryPort {
+
+    private final StateStoreEngine<String, Tap> engine =
+            PersistenceEngines.using(Jdk.inMemory()).stateStore();
+
+    @Override
+    public void save(Tap tap) {
+        Objects.requireNonNull(tap, "Tap must not be null");
+        if (engine.exists(tap.id())) {
+            throw new DuplicateTapException(tap.id());
+        }
+        engine.save(tap.id(), tap);
+    }
+
+    @Override
+    public Optional<Tap> findById(String id) {
+        return engine.findById(id);
+    }
+
+    @Override
+    public List<Tap> findAll() {
+        return engine.findAll();
+    }
+
+    @Override
+    public boolean exists(String id) {
+        return engine.exists(id);
+    }
+}
+```
+
 ---
 
 ## 📦 Package Architecture & JPMS Visibility

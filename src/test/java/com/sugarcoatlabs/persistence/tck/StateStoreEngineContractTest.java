@@ -1,6 +1,5 @@
 package com.sugarcoatlabs.persistence.tck;
 
-import com.sugarcoatlabs.persistence.lifecycle.ResettableEngine;
 import com.sugarcoatlabs.persistence.state.StateStoreEngine;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -43,7 +42,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
  *
  * <h3>Lifecycle</h3>
  * <ul>
- *   <li>{@link #shouldClearAllEntries()} &ndash; Confirms {@link ResettableEngine#clear()}
+ *   <li>{@link #shouldClearAllEntries()} &ndash; Confirms {@link #resetStore()}
  *       wipes all stored entries between tests.</li>
  * </ul>
  *
@@ -54,33 +53,35 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
  *       state corruption.</li>
  * </ul>
  *
- * @param <T> the resettable {@link StateStoreEngine} implementation under test
+ * @param <T> the {@link StateStoreEngine} implementation under test
  * @see StateStoreEngine
- * @see ResettableEngine
  */
 public abstract class StateStoreEngineContractTest<
-        T extends StateStoreEngine<String, StateStoreEngineContractTest.DispenserConfig>
-                & ResettableEngine> {
+        T extends StateStoreEngine<String, StateStoreEngineContractTest.DispenserConfig>> {
 
     public record DispenserConfig(String id, double flowRate) {}
 
     private T store;
 
     /**
-     * Supplies the concrete resettable {@link StateStoreEngine} under test.
+     * Supplies the concrete {@link StateStoreEngine} under test.
      *
-     * @return a non-null store implementing {@link StateStoreEngine} and
-     *         {@link ResettableEngine}
+     * @return a non-null store implementing {@link StateStoreEngine}
      */
     protected abstract T getStore();
+
+    /**
+     * Resets the underlying storage state before each test and during lifecycle tests.
+     */
+    protected abstract void resetStore();
 
     /**
      * Initializes the store under test and wipes residual entries before each test.
      */
     @BeforeEach
     void setUp() {
+        resetStore();
         this.store = getStore();
-        this.store.clear();
     }
 
     /**
@@ -105,6 +106,31 @@ public abstract class StateStoreEngineContractTest<
         assertThat(store.deleteById("tap-1")).isTrue();
         assertThat(store.deleteById("tap-1")).isFalse();
         assertThat(store.exists("tap-1")).isFalse();
+    }
+
+    /**
+     * Ensures distinct entity identifiers with identical payloads are stored as separate
+     * independent entries without colliding or overwriting each other.
+     */
+    @Test
+    @DisplayName("Should store distinct keys with identical payloads as independent entries")
+    void shouldStoreDistinctKeysWithIdenticalPayloadsIndependently() {
+        var tap1 = new DispenserConfig("tap-1", 0.064);
+        var tap2 = new DispenserConfig("tap-2", 0.064);
+
+        store.save("tap-1", tap1);
+        store.save("tap-2", tap2);
+
+        assertThat(store.exists("tap-1")).isTrue();
+        assertThat(store.exists("tap-2")).isTrue();
+        assertThat(store.findById("tap-1")).contains(tap1);
+        assertThat(store.findById("tap-2")).contains(tap2);
+        assertThat(store.findAll()).containsExactlyInAnyOrder(tap1, tap2);
+
+        assertThat(store.deleteById("tap-1")).isTrue();
+        assertThat(store.exists("tap-1")).isFalse();
+        assertThat(store.exists("tap-2")).isTrue();
+        assertThat(store.findAll()).containsExactly(tap2);
     }
 
     /**
@@ -149,14 +175,15 @@ public abstract class StateStoreEngineContractTest<
     }
 
     /**
-     * Ensures {@link ResettableEngine#clear()} removes all stored entries and resets
+     * Ensures {@link #resetStore()} removes all stored entries and resets
      * existence lookups.
      */
     @Test
     @DisplayName("Should clear all entries")
     void shouldClearAllEntries() {
         store.save("tap-1", new DispenserConfig("tap-1", 0.064));
-        store.clear();
+        resetStore();
+        this.store = getStore();
 
         assertThat(store.findAll()).isEmpty();
         assertThat(store.exists("tap-1")).isFalse();

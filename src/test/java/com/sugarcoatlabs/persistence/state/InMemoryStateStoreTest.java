@@ -1,26 +1,31 @@
 package com.sugarcoatlabs.persistence.state;
 
-import com.sugarcoatlabs.persistence.impl.InMemoryStateStore;
+import com.sugarcoatlabs.persistence.Jdk;
+import com.sugarcoatlabs.persistence.PersistenceEngines;
+import com.sugarcoatlabs.persistence.lifecycle.ResettableEngine;
 import com.sugarcoatlabs.persistence.tck.StateStoreEngineContractTest;
 
 /**
- * Concrete TCK verification suite for {@link InMemoryStateStore}.
- *
- * <p>Supplies a pure-JDK {@link InMemoryStateStore} instance to
- * {@link StateStoreEngineContractTest} to verify full compliance with all CRUD,
- * snapshot immutability, validation, reset, and concurrency guarantees.</p>
- *
- * @see InMemoryStateStore
- * @see StateStoreEngineContractTest
+ * Pure-JDK realization runner executing the {@link StateStoreEngineContractTest} TCK
+ * against {@link PersistenceEngines#using(com.sugarcoatlabs.persistence.PersistencePipeline)}
+ * with {@link Jdk#inMemory()}.
  */
-class InMemoryStateStoreTest extends StateStoreEngineContractTest<
-        InMemoryStateStore<String, StateStoreEngineContractTest.DispenserConfig>> {
+class InMemoryStateStoreTest
+        extends StateStoreEngineContractTest<
+        StateStoreEngine<String, StateStoreEngineContractTest.DispenserConfig>> {
 
-    private final InMemoryStateStore<String, DispenserConfig> storeUnderTest =
-            new InMemoryStateStore<>();
+    private final StateStoreEngine<String, DispenserConfig> store =
+            PersistenceEngines.using(Jdk.inMemory()).stateStore();
 
     @Override
-    protected InMemoryStateStore<String, DispenserConfig> getStore() {
-        return storeUnderTest;
+    protected StateStoreEngine<String, DispenserConfig> getStore() {
+        return store;
+    }
+
+    @Override
+    protected void resetStore() {
+        if (store instanceof ResettableEngine resettable) {
+            resettable.clear();
+        }
     }
 }

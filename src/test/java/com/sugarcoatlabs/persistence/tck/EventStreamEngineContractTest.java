@@ -1,7 +1,6 @@
 package com.sugarcoatlabs.persistence.tck;
 
 import com.sugarcoatlabs.persistence.event.EventStreamEngine;
-import com.sugarcoatlabs.persistence.lifecycle.ResettableEngine;
 import com.sugarcoatlabs.persistence.exception.DuplicateEventException;
 import com.sugarcoatlabs.persistence.exception.OptimisticConcurrencyException;
 import org.junit.jupiter.api.BeforeEach;
@@ -47,7 +46,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
  *
  * <h3>Lifecycle</h3>
  * <ul>
- *   <li>{@link #shouldClearAllState()} &ndash; Confirms {@link ResettableEngine#clear()}
+ *   <li>{@link #shouldClearAllState()} &ndash; Confirms {@link #resetEngine()}
  *       wipes all streams, sequences, and idempotency state between tests.</li>
  * </ul>
  *
@@ -75,30 +74,33 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
  *       Snapshot isolation test polling lock-free reads during continuous appends.</li>
  * </ul>
  *
- * @param <T> the resettable {@link EventStreamEngine} implementation under test
+ * @param <T> the {@link EventStreamEngine} implementation under test
  * @see EventStreamEngine
- * @see ResettableEngine
  */
 public abstract class EventStreamEngineContractTest<
-        T extends EventStreamEngine<String, UUID, String> & ResettableEngine> {
+        T extends EventStreamEngine<String, UUID, String>> {
 
     private T engine;
 
     /**
-     * Supplies the concrete resettable {@link EventStreamEngine} under test.
+     * Supplies the concrete {@link EventStreamEngine} under test.
      *
-     * @return a non-null engine implementing {@link EventStreamEngine} and
-     *         {@link ResettableEngine}
+     * @return a non-null engine implementing {@link EventStreamEngine}
      */
     protected abstract T getEngine();
+
+    /**
+     * Resets the underlying storage state before each test and during lifecycle tests.
+     */
+    protected abstract void resetEngine();
 
     /**
      * Initializes the engine under test and wipes residual state before each test.
      */
     @BeforeEach
     void setUp() {
+        resetEngine();
         this.engine = getEngine();
-        this.engine.clear();
     }
 
     /**
@@ -227,7 +229,7 @@ public abstract class EventStreamEngineContractTest<
     }
 
     /**
-     * Ensures {@link ResettableEngine#clear()} resets all streams and deduplication state.
+     * Ensures {@link #resetEngine()} resets all streams and deduplication state.
      */
     @Test
     @DisplayName("Should clear all streams, sequences, and deduplication state")
@@ -235,7 +237,8 @@ public abstract class EventStreamEngineContractTest<
         UUID eventId = UUID.randomUUID();
         engine.append("tap-05", eventId, 1L, 1L, "OPEN");
 
-        engine.clear();
+        resetEngine();
+        this.engine = getEngine();
 
         assertThat(engine.currentSequence("tap-05")).isZero();
         assertThat(engine.stream("tap-05")).isEmpty();
