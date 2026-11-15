@@ -7,28 +7,37 @@ Hexagonal Architecture (Ports & Adapters) model, serving as a reusable,
 realistic, deterministic alternative to brittle mocks in unit tests and
 a fast persistence core for integration testing.
 
+Built around the principle of **"One Behavioral Contract, Many Technology Realizations,"**
+this module serves as the canonical specification and portable Technology Compatibility
+Kit (TCK) for building independent database realization modules (such as Amazon
+DynamoDB, PostgreSQL, Oracle, or MongoDB). External modules directly import the
+core engine interfaces (`EventStreamEngine`, `StateStoreEngine`), domain-agnostic
+exceptions, and abstract TCK contract test suites (`test-jar`) without rewriting
+contracts or duplicating test code—ensuring 100% behavioral parity and seamless
+technology substitution through the unified `PersistenceEngines.using(...)` entry point.
+
 ---
 
 ## 📑 Table of Contents
 
 - [📖 Public API Reference](#-public-api-reference)
-    - [1. `EventStreamEngine<S, E_ID, E>`](#1-eventstreamengines-e_id-e)
-    - [2. `StateStoreEngine<ID, T>`](#2-statestoreengineid-t)
+  - [1. `EventStreamEngine<S, E_ID, E>`](#1-eventstreamengines-e_id-e)
+  - [2. `StateStoreEngine<ID, T>`](#2-statestoreengineid-t)
 - [🌍 Declaration of Compatibility & Production Database Analogs](#-declaration-of-compatibility--production-database-analogs)
-    - [1. `EventStreamEngine` Compatibility (Append-Only, OCC & Global Idempotency)](#1-eventstreamengine-compatibility-append-only-occ--global-idempotency)
-    - [2. `StateStoreEngine` Compatibility (Mutable Latest-State Store)](#2-statestoreengine-compatibility-mutable-latest-state-store)
+  - [1. `EventStreamEngine` Compatibility (Append-Only, OCC & Global Idempotency)](#1-eventstreamengine-compatibility-append-only-occ--global-idempotency)
+  - [2. `StateStoreEngine` Compatibility (Mutable Latest-State Store)](#2-statestoreengine-compatibility-mutable-latest-state-store)
 - [🎯 Core Philosophy](#-core-philosophy)
 - [🧠 Behavioral Model: Event History vs. Current State](#-behavioral-model-event-history-vs-current-state)
-    - [Which Engine Should I Choose?](#which-engine-should-i-choose)
+  - [Which Engine Should I Choose?](#which-engine-should-i-choose)
 - [🧩 Type Agnosticism & Domain Freedom](#-type-agnosticism--domain-freedom)
 - [🚀 User's Guide](#-users-guide)
-    - [1. Partitioned Event Stream Engine (`EventStreamEngine`)](#1-partitioned-event-stream-engine-eventstreamengine)
-    - [2. Mutable State Store Engine (`StateStoreEngine`)](#2-mutable-state-store-engine-statestoreengine)
+  - [1. Partitioned Event Stream Engine (`EventStreamEngine`)](#1-partitioned-event-stream-engine-eventstreamengine)
+  - [2. Mutable State Store Engine (`StateStoreEngine`)](#2-mutable-state-store-engine-statestoreengine)
 - [🏛 Hexagonal Architecture Integration](#-hexagonal-architecture-integration)
 - [📦 Package Architecture & JPMS Visibility](#-package-architecture--jpms-visibility)
 - [🔌 Build & Dependency Configuration](#-build--dependency-configuration)
-    - [Local Build, Test & Javadoc Verification](#local-build-test--javadoc-verification)
-    - [Client Dependency Declaration](#client-dependency-declaration)
+  - [Local Build, Test & Javadoc Verification](#local-build-test--javadoc-verification)
+  - [Client Dependency Declaration](#client-dependency-declaration)
 - [🧪 Technical Specifications & Concurrency Guarantees](#-technical-specifications--concurrency-guarantees)
 - [🔌 Building Database Implementations](#-building-database-implementations)
 - [📄 License](#-license)
@@ -150,10 +159,12 @@ Quarkus), database drivers, and test libraries from its production bytecode.
 
 It serves as a **zero-dependency, pure-JDK persistence core** designed around
 strict architectural boundaries:
-- **Facade + Interface Segregation (ISP):** A single sealed entry point
-  (`PersistenceEnginesJdk`) provides direct access to completely independent,
-  narrowly scoped engines (`EventStreamEngine`, `StateStoreEngine`). Consumers
-  only depend on the exact behavioral contract they need.
+- **Unified Entry Point & Interface Segregation (ISP):** A single universal
+  entry point (`PersistenceEngines.using(...)`) accepts technology-specific
+  pipelines (`PersistencePipeline`, such as `Jdk.inMemory()`) and provides
+  direct access to completely independent, narrowly scoped engines
+  (`EventStreamEngine`, `StateStoreEngine`). Consumers only depend on the exact
+  behavioral contract they need.
 - **Encapsulated Test Lifecycle Hooks:** Destructive reset operations
   (`ResettableEngine#clear()`) live in the unexported
   `com.sugarcoatlabs.persistence.lifecycle` package rather than polluting
@@ -212,8 +223,9 @@ domain objects:
 
 ## 🚀 User's Guide
 
-Use the `PersistenceEnginesJdk` facade to instantiate the exact engine required
-by your adapter. Each factory call returns a fresh, isolated engine instance.
+Use the unified `PersistenceEngines.using(...)` entry point with `Jdk.inMemory()`
+to instantiate the exact engine required by your adapter. Each pipeline call
+returns a fresh, isolated engine instance.
 
 ### 1. Partitioned Event Stream Engine (`EventStreamEngine`)
 
@@ -222,7 +234,8 @@ A thread-safe, append-only event log featuring **per-stream striped
 deduplication**, and **lock-free immutable snapshot reads**.
 
 ```java
-import com.sugarcoatlabs.persistence.PersistenceEnginesJdk;
+import com.sugarcoatlabs.persistence.Jdk;
+import com.sugarcoatlabs.persistence.PersistenceEngines;
 import com.sugarcoatlabs.persistence.event.EventStreamEngine;
 import com.sugarcoatlabs.persistence.exception.DuplicateEventException;
 import com.sugarcoatlabs.persistence.exception.OptimisticConcurrencyException;
@@ -230,9 +243,9 @@ import com.sugarcoatlabs.persistence.exception.OptimisticConcurrencyException;
 import java.util.List;
 import java.util.UUID;
 
-// 1. Obtain a segregated EventStreamEngine via the facade
+// 1. Obtain a segregated EventStreamEngine via the unified entry point
 EventStreamEngine<String, UUID, String> engine =
-        PersistenceEnginesJdk.eventStream();
+        PersistenceEngines.using(Jdk.inMemory()).eventStream();
 
 String streamId = "dispenser-01";
 UUID eventId = UUID.randomUUID();
@@ -255,7 +268,8 @@ A thread-safe, null-safe key-value state store for configuration registries,
 projections, and entity snapshots.
 
 ```java
-import com.sugarcoatlabs.persistence.PersistenceEnginesJdk;
+import com.sugarcoatlabs.persistence.Jdk;
+import com.sugarcoatlabs.persistence.PersistenceEngines;
 import com.sugarcoatlabs.persistence.state.StateStoreEngine;
 
 import java.util.List;
@@ -263,9 +277,9 @@ import java.util.Optional;
 
 record TapConfig(String id, double flowRate) {}
 
-// 1. Obtain a segregated StateStoreEngine via the facade
+// 1. Obtain a segregated StateStoreEngine via the unified entry point
 StateStoreEngine<String, TapConfig> registry =
-        PersistenceEnginesJdk.stateStore();
+        PersistenceEngines.using(Jdk.inMemory()).stateStore();
 
 // 2. Save (idempotent upsert) & query
 registry.save("tap-1", new TapConfig("tap-1", 0.064));
@@ -292,7 +306,7 @@ public class InMemoryTapEventStore
         implements TapEventPublishingPort, TapEventFetchingPort {
 
     private final EventStreamEngine<String, UUID, TapEvent> engine =
-            PersistenceEnginesJdk.eventStream();
+            PersistenceEngines.using(Jdk.inMemory()).eventStream();
 
     @Override
     public void append(TapEvent event, long expectedSequenceNumber) {
@@ -334,19 +348,23 @@ src/main/java
  ├── module-info.java                        <-- JPMS Encapsulation (Zero external requires)
  └── com.sugarcoatlabs.persistence
       ├── package-info.java
-      ├── PersistenceEnginesJdk.java         <-- [Exported] Sealed Entry-Point Facade
+      ├── PersistenceEngines.java            <-- [Exported] Universal Entry-Point Interface
+      ├── PersistencePipeline.java           <-- [Exported] Technology Pipeline Marker
+      ├── Jdk.java                           <-- [Exported] Pure-JDK Pipeline Realization
       ├── event/
       │    ├── package-info.java
-      │    ├── EventStreamEngine.java        <-- [Exported] Append-Only Event Log Contract
-      │    └── InMemoryEventStream.java      <-- Encapsulated JDK Implementation
+      │    └── EventStreamEngine.java        <-- [Exported] Append-Only Event Log Contract
       ├── state/
       │    ├── package-info.java
-      │    ├── StateStoreEngine.java         <-- [Exported] Mutable Latest-State Contract
-      │    └── InMemoryStateStore.java       <-- Encapsulated JDK Implementation
+      │    └── StateStoreEngine.java         <-- [Exported] Mutable Latest-State Contract
       ├── exception/
       │    ├── package-info.java
       │    ├── OptimisticConcurrencyException.java <-- [Exported]
       │    └── DuplicateEventException.java        <-- [Exported]
+      ├── impl/
+      │    ├── package-info.java
+      │    ├── InMemoryEventStream.java      <-- [Unexported] Pure-JDK Event Stream Realization
+      │    └── InMemoryStateStore.java       <-- [Unexported] Pure-JDK State Store Realization
       └── lifecycle/
            ├── package-info.java
            └── ResettableEngine.java         <-- [Unexported] Test Reset Lifecycle Hook

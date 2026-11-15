@@ -3,7 +3,7 @@
  *
  * <p>This package contains the concrete thread-safe implementations
  * ({@code InMemoryEventStream} and {@code InMemoryStateStore}) backing
- * {@link com.sugarcoatlabs.persistence.PersistenceEnginesJdk}.
+ * {@link com.sugarcoatlabs.persistence.PersistenceEngines}.
  *
  * <p><strong>JPMS Visibility:</strong> This package is intentionally <em>not</em> exported in
  * {@code module-info.java}. External modules and application adapters must depend strictly on

@@ -1,53 +1,38 @@
 # Implementation Guide
 
-**One Behavioral Contract, Many Technology Realizations.**
+**One Behavioral Contract, Technology Realizations via TCK.**
 
-`persistence-engines-core` provides technology-agnostic persistence contracts (`EventStreamEngine` and `StateStoreEngine`) verified through a portable Technology Compatibility Kit (TCK). Realizations for platforms like Amazon DynamoDB, PostgreSQL, Oracle, or MongoDB must implement these contracts and pass the inherited TCK suite.
-
----
-
-## 1. Architectural & JPMS Boundaries
-
-Realizations must adhere to exported public contracts and manage native lifecycles:
-
-- **Allowed Public Contracts (`module-info.java` exports):**
-  - `com.sugarcoatlabs.persistence.event.EventStreamEngine`
-  - `com.sugarcoatlabs.persistence.state.StateStoreEngine`
-  - `com.sugarcoatlabs.persistence.exception.OptimisticConcurrencyException`
-  - `com.sugarcoatlabs.persistence.exception.DuplicateEventException`
-- **Forbidden Internal Types:** Avoid JDK implementations (`InMemoryEventStream`, `InMemoryStateStore`) and internal lifecycle classes like `ResettableEngine`; handle data resets inside your module's test setup.
+`persistence-engines-core` fournit des contrats agnostiques (`EventStreamEngine` et `StateStoreEngine`) validés par un Technology Compatibility Kit (TCK). Les réalisations tierces (DynamoDB, PostgreSQL, etc.) doivent implémenter ces contrats et passer la suite TCK.
 
 ---
 
-## 2. Mandatory Behavioral Semantics
+## 1. Frontières Architecturales et JPMS
 
-Realizations must mirror the invariants of the reference core:
-
-- **General Semantics:** Fail fast on `null` or blank keys/payloads with `IllegalArgumentException`; return safe defaults for absent keys (`0L`, `List.of()`, `Optional.empty()`, `false`); enforce unmodifiable snapshots on collections; maintain strong read-your-writes consistency.
-- **`EventStreamEngine` Semantics:** Use 1-indexed sequences starting at `1L`; validate sequence numbers prior to global ID deduplication; throw `OptimisticConcurrencyException` on sequence mismatches and `DuplicateEventException` on duplicate event IDs; execute dual-writes atomically.
-- **`StateStoreEngine` Semantics:** Support idempotent upserts via `save(id, entity)` and return accurate boolean results from `deleteById(id)`.
+- **Contrats publics exportés (`core`) :** `PersistenceEngines`, `PersistencePipeline`, `EventStreamEngine`, `StateStoreEngine`, et les exceptions associées (`OptimisticConcurrencyException`, `DuplicateEventException`).
+- **Point d'entrée fluent :** Chaque module fournit un point d'entrée implémentant `PersistencePipeline` (ex. `PersistenceEngines.using(DynamoDb.client(client)).table("...").eventStream(codec)`).
+- **Isolation interne :** Les classes concrètes doivent résider dans un sous-package non exporté `.impl` (ex. `com.sugarcoatlabs.persistence.dynamodb.impl`) en évitant les types internes du noyau.
 
 ---
 
-## 3. Importing the Contract TCK (`test-jar`)
+## 2. Sémantiques Comportementales Obligatoires
 
-To reuse the abstract contract test suite:
-
-1. **Core Exporter Setup (`persistence-engines-core/pom.xml`):** Configure `maven-jar-plugin` to generate a `test-jar` containing `com/sugarcoatlabs/persistence/tck/**`.
-2. **Consumer Setup (`<module>/pom.xml`):** Include both the core artifact and its `test-jar` with `<scope>test</scope>`, and configure `maven-surefire-plugin` for JPMS module-path execution.
-
----
-
-## 4. Extending Abstract Contract Suites & Templates
-
-Extend the TCK test classes in your module's `src/test/java` by supplying your engine factory and table/storage reset hooks. A minimal `pom.xml` template for dependent realizations can be configured with the core dependencies, TCK test-jar, and JUnit Jupiter, as seen in the complete reference document.
+- **Sémantique générale :** Échec rapide (`IllegalArgumentException`) sur les clés ou charges nulles/vides, retours par défaut sécurisés pour les clés absentes, collections non modifiables et forte consistance.
+- **`EventStreamEngine` :** Séquences commençant à `1L`, validation avant déduplication globale, gestion de `OptimisticConcurrencyException` et `DuplicateEventException`, doubles écritures atomiques.
+- **`StateStoreEngine` :** Upserts idempotents via `save(id, entity)` et retours booléens précis pour `deleteById(id)`.
 
 ---
 
-## Annex A: Minimal `pom.xml` Template for Dependent Adapter Projects
+## 3. Réutilisation du TCK et Configuration Maven
+
+- **Exportation TCK :** `persistence-engines-core` produit un artifact `test-jar` filtré sur `com/sugarcoatlabs/persistence/tck/**`.
+- **Dépendance consommateur :** Inclure l'artifact core et son `test-jar` en scope `test`, puis étendre `EventStreamEngineContractTest` et `StateStoreEngineContractTest`.
+
+> *Consultez le fichier source complet pour l'implémentation détaillée et le modèle `pom.xml` complet de l'Annexe A.*
+
+---
+## Annex A: Minimal `pom.xml` Template for Dependent Realization Projects
 
 ```xml
-
 <?xml version="1.0" encoding="UTF-8"?>
 <project xmlns="http://apache.org"
          xmlns:xsi="http://w3.org"
@@ -64,7 +49,11 @@ Extend the TCK test classes in your module's `src/test/java` by supplying your e
 
   1. IMPORTED & REUSED FROM `persistence-engines-core` (DO NOT REWRITE):
 
-     - Interfaces:
+     - Entry-Point & Pipeline Contracts:
+         * com.sugarcoatlabs.persistence.PersistenceEngines
+         * com.sugarcoatlabs.persistence.PersistencePipeline
+
+     - Engine Interfaces:
          * com.sugarcoatlabs.persistence.event.EventStreamEngine
          * com.sugarcoatlabs.persistence.state.StateStoreEngine
 
@@ -81,21 +70,21 @@ Extend the TCK test classes in your module's `src/test/java` by supplying your e
 
          * module-info.java
              JPMS module descriptor requiring `com.sugarcoatlabs.persistence.core`
-             and AWS SDK DynamoDB, exporting only the public facade package while
-             encapsulating concrete implementation classes.
+             and AWS SDK DynamoDB, exporting only `com.sugarcoatlabs.persistence.dynamodb`
+             while keeping `.impl` unexported.
 
-         * PersistenceEnginesDynamoDb.java
-             Public non-instantiable entry-point facade (mirroring `PersistenceEnginesJdk`)
-             that accepts `DynamoDbClient`, table names, and codecs, returning only
-             narrow `EventStreamEngine` and `StateStoreEngine` interfaces.
+         * com/sugarcoatlabs/persistence/dynamodb/DynamoDb.java
+             Public technology entry point implementing `PersistencePipeline`
+             for `PersistenceEngines.using(DynamoDb.client(client))...`, returning
+             only narrow `EventStreamEngine` and `StateStoreEngine` interfaces.
 
-         * DynamoDbEventStream.java
-             Package-private realization of `EventStreamEngine` backed by DynamoDB
+         * com/sugarcoatlabs/persistence/dynamodb/impl/DynamoDbEventStream.java
+             Encapsulated realization of `EventStreamEngine` backed by DynamoDB
              `TransactWriteItems` (atomic sequence check + global `eventId` sentinel)
              and `ConsistentRead=true` queries.
 
-         * DynamoDbStateStore.java
-             Package-private realization of `StateStoreEngine` backed by DynamoDB
+         * com/sugarcoatlabs/persistence/dynamodb/impl/DynamoDbStateStore.java
+             Encapsulated realization of `StateStoreEngine` backed by DynamoDB
              `PutItem`, `GetItem` (`ConsistentRead=true`), `Scan`, and `DeleteItem`.
 
      - Integration Tests (`src/test/java`):
@@ -134,7 +123,7 @@ Extend the TCK test classes in your module's `src/test/java` by supplying your e
     <dependency>
       <groupId>org.junit.jupiter</groupId>
       <artifactId>junit-jupiter</artifactId>
-      <version>${junit.version}</version>
+      <version>\${junit.version}</version>
       <scope>test</scope>
     </dependency>
   </dependencies>
@@ -157,5 +146,4 @@ Extend the TCK test classes in your module's `src/test/java` by supplying your e
     </plugins>
   </build>
 </project>
-
 ```
