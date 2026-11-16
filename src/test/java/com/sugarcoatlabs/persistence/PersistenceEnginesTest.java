@@ -78,10 +78,11 @@ class PersistenceEnginesTest {
 
         assertThat(store1).isNotNull().isNotSameAs(store2);
 
-        store1.save("key-1", "VALUE_A");
+        store1.putIfAbsent("key-1", "VALUE_A");
         assertThat(store1.exists("key-1")).isTrue();
         assertThat(store2.exists("key-1")).isFalse();
     }
+
 
     /**
      * Verifies via reflection that {@link Jdk.InMemoryPipeline} terminal methods
@@ -102,4 +103,29 @@ class PersistenceEnginesTest {
         assertThat(ResettableEngine.class.isAssignableFrom(eventReturn)).isFalse();
         assertThat(ResettableEngine.class.isAssignableFrom(stateReturn)).isFalse();
     }
+
+    /**
+     * Ensures reusing a single {@link Jdk.InMemoryPipeline} instance across multiple
+     * factory calls still produces fresh, isolated engine instances.
+     */
+    @Test
+    @DisplayName("Reusing a single Jdk.inMemory() pipeline should still produce isolated engines")
+    void shouldCreateIsolatedEnginesWhenReusingPipelineInstance() {
+        var pipeline = Jdk.inMemory();
+
+        var store1 = PersistenceEngines.using(pipeline).stateStore();
+        var store2 = PersistenceEngines.using(pipeline).stateStore();
+        store1.putIfAbsent("key-1", "VALUE_A");
+
+        assertThat(store1).isNotSameAs(store2);
+        assertThat(store2.exists("key-1")).isFalse();
+
+        var stream1 = PersistenceEngines.using(pipeline).eventStream();
+        var stream2 = PersistenceEngines.using(pipeline).eventStream();
+        stream1.append("stream-1", UUID.randomUUID(), 1L, 1L, "EVENT_A");
+
+        assertThat(stream1).isNotSameAs(stream2);
+        assertThat(stream2.currentSequence("stream-1")).isZero();
+    }
+
 }

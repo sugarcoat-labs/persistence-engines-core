@@ -2,7 +2,7 @@
 
 Provides thread-safe, in-memory persistence engines. It is a lightweight,
 high-performance, zero-dependency pure Java core module. It is part of the
-**sugarcoat-labs** ecosystem and is designed for clean integration under
+**sugarcoat-labs** ecosystem and is designed for clean integration under the
 Hexagonal Architecture (Ports & Adapters) model, serving as a reusable,
 realistic, deterministic alternative to brittle mocks in unit tests and
 a fast persistence core for integration testing.
@@ -10,11 +10,14 @@ a fast persistence core for integration testing.
 Built around the principle of **"One Behavioral Contract, Many Technology Realizations,"**
 this module serves as the canonical specification and portable Technology Compatibility
 Kit (TCK) for building independent database realization modules (such as Amazon
-DynamoDB, PostgreSQL, Oracle, or MongoDB). External modules directly import the
-core engine interfaces (`EventStreamEngine`, `StateStoreEngine`), domain-agnostic
-exceptions, and abstract TCK contract test suites (`test-jar`) without rewriting
-contracts or duplicating test code—ensuring 100% behavioral parity and seamless
-technology substitution through the unified `PersistenceEngines.using(...)` entry point.
+DynamoDB, PostgreSQL, Oracle, MongoDB, etc.). External modules implement the
+core engine interfaces (`EventStreamEngine` and the JSR-107-aligned `StateStoreEngine`),
+alongside zero-overhead ergonomic state-store views (`RepositoryStateStore` for
+Spring Data conventions and `EntityStateStore` for Jakarta Persistence/JPA
+conventions), domain-agnostic exceptions, and abstract TCK contract test suites
+(`test-jar`)—ensuring 100% behavioral parity and seamless technology substitution
+through the unified `PersistenceEngines.using(...)` entry point.
+
 
 ---
 
@@ -23,6 +26,9 @@ technology substitution through the unified `PersistenceEngines.using(...)` entr
 - [📖 Public API Reference](#-public-api-reference)
   - [1. `EventStreamEngine<S, E_ID, E>`](#1-eventstreamengines-e_id-e)
   - [2. `StateStoreEngine<ID, T>`](#2-statestoreengineid-t)
+  - [3. `RepositoryStateStore<ID, T>`](#3-repositorystatestoreid-t)
+  - [4. `EntityStateStore<ID, T>`](#4-entitystatestoreid-t)
+  - [5. Unified Exception Model Across State-Store Views](#5-unified-exception-model-across-state-store-views)
 - [🌍 Declaration of Compatibility & Production Database Analogs](#-declaration-of-compatibility--production-database-analogs)
   - [1. `EventStreamEngine` Compatibility (Append-Only, OCC & Global Idempotency)](#1-eventstreamengine-compatibility-append-only-occ--global-idempotency)
   - [2. `StateStoreEngine` Compatibility (Mutable Latest-State Store)](#2-statestoreengine-compatibility-mutable-latest-state-store)
@@ -33,6 +39,7 @@ technology substitution through the unified `PersistenceEngines.using(...)` entr
 - [🚀 User's Guide](#-users-guide)
   - [1. Partitioned Event Stream Engine (`EventStreamEngine`)](#1-partitioned-event-stream-engine-eventstreamengine)
   - [2. Mutable State Store Engine (`StateStoreEngine`)](#2-mutable-state-store-engine-statestoreengine)
+  - [3. Ergonomic State-Store Views (`RepositoryStateStore` & `EntityStateStore`)](#3-ergonomic-state-store-views-repositorystatestore--entitystatestore)
 - [🏛 Hexagonal Architecture Integration](#-hexagonal-architecture-integration)
 - [📦 Package Architecture & JPMS Visibility](#-package-architecture--jpms-visibility)
 - [🔌 Build & Dependency Configuration](#-build--dependency-configuration)
@@ -43,6 +50,8 @@ technology substitution through the unified `PersistenceEngines.using(...)` entr
 - [📄 License](#-license)
 
 ---
+
+
 
 ## 📖 Public API Reference
 
@@ -78,9 +87,15 @@ public interface EventStreamEngine<S, E_ID, E> {
 
 ```java
 public interface StateStoreEngine<ID, T> {
-    
-    /** Stores or overwrites the state snapshot associated with id. */
-    void save(ID id, T entity);
+
+    /** Atomically stores the snapshot only if no entry exists for id. */
+    void putIfAbsent(ID id, T entity);
+
+    /** Atomically replaces the existing snapshot associated with id. */
+    void replace(ID id, T entity);
+
+    /** Atomically stores or overwrites the snapshot associated with id. */
+    void put(ID id, T entity);
 
     /** Retrieves the state snapshot for id, or Optional.empty() if absent. */
     Optional<T> findById(ID id);
@@ -96,16 +111,94 @@ public interface StateStoreEngine<ID, T> {
 }
 ```
 
-- **`save(id, entity)`** performs an atomic, idempotent upsert that stores a new
+- **`putIfAbsent(id, entity)`** atomically inserts a new entry only if `id` is
+  absent, throwing `DuplicateEntityException` if an entry already exists.
+- **`replace(id, entity)`** atomically overwrites the snapshot for an existing
+  `id`, throwing `EntityNotFoundException` if no entry exists.
+- **`put(id, entity)`** performs an atomic, idempotent upsert that stores a new
   entry or replaces any existing snapshot for `id`.
 - **`findById(id)`** retrieves the current snapshot wrapped in an `Optional`,
   never returning `null`.
 - **`findAll()`** returns an unmodifiable point-in-time list of all stored
   entities (`List.of()` when empty).
-- **`exists(id)`** checks key presence in $O(1)$ time without allocating or
+- **`exists(id)`** checks key presence in \(O(1)\) time without allocating or
   copying snapshots.
 - **`deleteById(id)`** atomically removes the entry for `id` and reports
   whether an entry was actually deleted.
+
+### 3. `RepositoryStateStore<ID, T>`
+*Package: `com.sugarcoatlabs.persistence.state`*
+
+```java
+public interface RepositoryStateStore<ID, T> {
+
+    static <ID, T> RepositoryStateStore<ID, T> adapting(StateStoreEngine<ID, T> delegate);
+
+    void insert(ID id, T entity);
+    void update(ID id, T entity);
+    void save(ID id, T entity);
+    Optional<T> findById(ID id);
+    List<T> findAll();
+    boolean existsById(ID id);
+    boolean deleteById(ID id);
+}
+```
+
+- **`adapting(delegate)`** wraps any `StateStoreEngine<ID, T>` realization
+  (in-memory or external database) in a zero-overhead Spring Data repository-style
+  facade.
+- **`insert` / `update` / `save`** delegate atomically to `putIfAbsent`,
+  `replace`, and `put` respectively, preserving `DuplicateEntityException` and
+  `EntityNotFoundException` guarantees.
+
+### 4. `EntityStateStore<ID, T>`
+*Package: `com.sugarcoatlabs.persistence.state`*
+
+```java
+public interface EntityStateStore<ID, T> {
+
+    static <ID, T> EntityStateStore<ID, T> adapting(StateStoreEngine<ID, T> delegate);
+
+    void persist(ID id, T entity);
+    void replace(ID id, T entity);
+    void merge(ID id, T entity);
+    Optional<T> find(ID id);
+    List<T> findAll();
+    boolean contains(ID id);
+    boolean remove(ID id);
+}
+```
+
+- **`adapting(delegate)`** wraps any `StateStoreEngine<ID, T>` realization in a
+  zero-overhead Jakarta Persistence (`EntityManager`-style) facade.
+- **`persist` / `replace` / `merge`** delegate atomically to `putIfAbsent`,
+  `replace`, and `put` respectively, preserving `DuplicateEntityException` and
+  `EntityNotFoundException` guarantees.
+
+
+### 5. Unified Exception Model Across State-Store Views
+*Package: `com.sugarcoatlabs.persistence.exception`*
+
+All three state-store interfaces (`StateStoreEngine`, `RepositoryStateStore`, and
+`EntityStateStore`) share a single, framework-neutral runtime exception model
+rather than maintaining separate exception hierarchies per view:
+
+| Failure Condition | `persistence-engines-core` | JSR-107 (`javax.cache`) | Jakarta Persistence (JPA) | Spring Data (`org.springframework.dao`) |
+| :--- | :--- | :--- | :--- | :--- |
+| **Key already exists on conditional insert** | **`DuplicateEntityException`** | *(Returns `false` on `putIfAbsent`)* | `EntityExistsException` | `DuplicateKeyException` |
+| **Key absent on conditional update/replace** | **`EntityNotFoundException`** | *(Returns `false` on `replace`)* | **`EntityNotFoundException`** | `EmptyResultDataAccessException` |
+| **Null or blank arguments** | **`IllegalArgumentException`** | `NullPointerException` | `IllegalArgumentException` | `IllegalArgumentException` |
+
+- **Zero Translation Overhead:** `RepositoryStateStore` and `EntityStateStore`
+  delegate directly to `StateStoreEngine` without catching, wrapping, or
+  re-throwing exceptions.
+- **Consistent Hexagonal Adapter Boundaries:** Outbound adapters catch the exact
+  same `DuplicateEntityException` and `EntityNotFoundException` types (and
+  inspect `.id()`) regardless of which state-store interface convention is
+  selected.
+- **Classpath Isolation:** Avoids colliding with Spring or Jakarta exception
+  class names while keeping `persistence-engines-core` free of external
+  dependencies.
 
 
 ## 🌍 Declaration of Compatibility & Production Database Analogs
@@ -138,20 +231,20 @@ invariants, each maps to its own set of database primitives and caveats:
 
 | Target Engine | Native Implementation Strategy | Specification Caveats |
 | :--- | :--- | :--- |
-| **PostgreSQL** *(Relational)* | `INSERT ... ON CONFLICT (id) DO UPDATE` for `save()`; `DELETE ... RETURNING 1` for `deleteById()`. | None. Full ACID parity out of the box. |
-| **MySQL 8.0+** *(InnoDB)* | `INSERT ... ON DUPLICATE KEY UPDATE` for `save()`; `DELETE FROM ... WHERE id = ?` (`affectedRows > 0`) for `deleteById()`. | Requires **InnoDB**. Note that `ON DUPLICATE KEY UPDATE` returns `2` affected rows on update (`0` if unchanged). |
-| **Amazon DynamoDB** *(Key-Value)* | `PutItem` for `save()`; `DeleteItem` (`ReturnValues: ALL_OLD`) for `deleteById()`. | Use `ConsistentRead=true` on `GetItem` if strict read-your-writes consistency is required; `findAll()` (`Scan`) is eventually consistent. |
-| **MongoDB** *(Document)* | `replaceOne({ _id: id }, doc, { upsert: true })` for `save()`; `deleteOne({ _id: id })` for `deleteById()`. | Configure `WriteConcern.MAJORITY` and `ReadConcern.MAJORITY` for linearizable reads. |
+| **PostgreSQL** *(Relational)* | `INSERT` (SQLSTATE `23505` &rarr; `DuplicateEntityException`) for `putIfAbsent()`; `UPDATE ... WHERE id = ?` (`affectedRows == 0` &rarr; `EntityNotFoundException`) for `replace()`; `INSERT ... ON CONFLICT (id) DO UPDATE` for `put()`; `DELETE ... RETURNING 1` for `deleteById()`. | None. Full ACID parity out of the box. |
+| **MySQL 8.0+** *(InnoDB)* | `INSERT` (Error `1062` &rarr; `DuplicateEntityException`) for `putIfAbsent()`; `UPDATE ... WHERE id = ?` for `replace()`; `INSERT ... ON DUPLICATE KEY UPDATE` for `put()`; `DELETE FROM ... WHERE id = ?` for `deleteById()`. | Requires **InnoDB**. Ensure `replace()` does not throw `EntityNotFoundException` when updating an existing row with an identical payload (`useAffectedRows=false` or version/timestamp touch). |
+| **Amazon DynamoDB** *(Key-Value)* | `PutItem` with `attribute_not_exists(PK)` for `putIfAbsent()`; `PutItem` with `attribute_exists(PK)` for `replace()`; unconditional `PutItem` for `put()`; `DeleteItem` (`ReturnValues: ALL_OLD`) for `deleteById()`. | Use `ConsistentRead=true` on `GetItem` if strict read-your-writes consistency is required; `findAll()` (`Scan`) is eventually consistent. |
+| **MongoDB** *(Document)* | `insertOne` (`E11000` &rarr; `DuplicateEntityException`) for `putIfAbsent()`; `replaceOne({ _id: id }, doc, { upsert: false })` (`matchedCount == 0` &rarr; `EntityNotFoundException`) for `replace()`; `replaceOne(..., { upsert: true })` for `put()`. | Check `matchedCount == 0` (not `modifiedCount == 0`) on `replace()` so identical payloads succeed. Configure `WriteConcern.MAJORITY` and `ReadConcern.MAJORITY`. |
 | **KurrentDB** *(EventStoreDB)* | Snapshot stream per entity (`MaxCount = 1`) or dedicated read-model projection store. | Not a native key-value store; prefer a relational or document store for `StateStoreEngine` adapters. |
 
-- **Last-Write-Wins Semantics:** `StateStoreEngine` enforces idempotent
-  overwrites without version checks. If your entity requires optimistic
-  versioning on updates, model it as an event-sourced aggregate on
-  `EventStreamEngine` instead.
+- **Conditional Writes vs. Optimistic Versioning:** `StateStoreEngine` supports
+  atomic existence preconditions (`putIfAbsent` and `replace`) as well as
+  idempotent overwrites (`put`), but deliberately omits payload-based
+  Compare-And-Swap (`replace(id, oldEntity, newEntity)`). If your entity
+  requires monotonic version checks on updates, model it as an event-sourced
+  aggregate on `EventStreamEngine` instead.
 
----
-
-## 🎯 Core Philosophy
+  ## 🎯 Core Philosophy
 
 This module is built strictly for **Java 24+** (with full JPMS `module-info.java`
 encapsulation) and deliberately excludes external frameworks (Spring, Micronaut,
@@ -165,6 +258,11 @@ strict architectural boundaries:
   direct access to completely independent, narrowly scoped engines
   (`EventStreamEngine`, `StateStoreEngine`). Consumers only depend on the exact
   behavioral contract they need.
+- **Ergonomic Adapter Views Without Implementation Duplication:** Database
+  realizations implement only the single canonical `StateStoreEngine<ID, T>`
+  contract, while zero-overhead pure-JDK facades (`RepositoryStateStore` and
+  `EntityStateStore`) adapt any engine instance into Spring Data or Jakarta
+  Persistence (JPA) conventions.
 - **Encapsulated Test Lifecycle Hooks:** Destructive reset operations
   (`ResettableEngine#clear()`) live in the unexported
   `com.sugarcoatlabs.persistence.lifecycle` package rather than polluting
@@ -175,9 +273,9 @@ strict architectural boundaries:
   **Object Adapters** inside your application that translate between your
   domain contracts and these generic engines.
 - **Production-Grade Behavioral Parity:** Enforces strict optimistic
-  concurrency, idempotency, and immutability rules out of the box—matching the
-  consistency guarantees of real databases without booting external
-  infrastructure during fast unit testing or local prototyping.
+  concurrency, idempotency, atomic conditional writes, and immutability rules
+  out of the box—matching the consistency guarantees of real databases without
+  booting external infrastructure during fast unit testing or local prototyping.
 
 ---
 
@@ -189,7 +287,7 @@ fundamentally different **data lifecycle semantics**:
 | Engine | Behavioral Model | Write Semantics | Concurrency Guarantees |
 | :--- | :--- | :--- | :--- |
 | **`EventStreamEngine`**<br>*(Append-Only Log)* | **Immutable History**<br>(`StreamId → List<Event>`) | Strictly **append-only**. Past facts are never overwritten or deleted. | Per-stream `ReentrantLock` partitions, global `ReentrantReadWriteLock` barrier, monotonic sequence checks, and `eventId` deduplication. |
-| **`StateStoreEngine`**<br>*(Entity / Registry Store)* | **Mutable Latest State**<br>(`EntityId → Entity`) | **Idempotent upsert**. Saving an existing key replaces its previous snapshot. | Lock-free atomic updates via `ConcurrentHashMap` with unmodifiable collection read boundaries. |
+| **`StateStoreEngine`**<br>*(Entity / Registry Store)* | **Mutable Latest State**<br>(`EntityId → Entity`) | **Conditional & Upsert Writes** (`putIfAbsent`, `replace`, `put`). | Lock-free atomic updates via `ConcurrentHashMap` with unmodifiable collection read boundaries. |
 
 ### Which Engine Should I Choose?
 
@@ -199,10 +297,10 @@ fundamentally different **data lifecycle semantics**:
 | **Financial ledgers, billing & audit trails** *(e.g., wallet credits/debits, compliance logs)* | **`EventStreamEngine`** | Past entries must never be overwritten or deleted. Every mutation requires an immutable, tamper-evident sequence history. |
 | **Transactional Outbox (Stage-1 simulation)** *(e.g., staging events before Kafka/RabbitMQ)* | **`EventStreamEngine`** | Preserves exact per-aggregate publication order while guaranteeing idempotency against duplicate event emission. |
 | **Saga / Process Manager execution logs** *(e.g., multi-step payment orchestration)* | **`EventStreamEngine`** | Tracks which compensation or forward steps have already completed in strict sequence order. |
-| **Static configurations & reference catalogs** *(e.g., Dispenser flow rates, feature flags)* | **`StateStoreEngine`** | Only the current active configuration matters. Updating an entry replaces the old snapshot without sequence overhead. |
-| **CQRS read projections & materialized views** *(e.g., pre-computed dashboard summaries)* | **`StateStoreEngine`** | Read models are disposable snapshots rebuilt from events; fast key lookup (`findById`) and overwrite semantics (`save`) suffice. |
-| **Idempotency / deduplication registries** *(e.g., tracking processed webhook IDs)* | **`StateStoreEngine`** | Provides fast O(1) existence checks (`exists(id)`) without maintaining ordered lists or monotonic sequence counters. |
-| **Ephemeral session tokens or heartbeats** *(e.g., active POS terminal status)* | **`StateStoreEngine`** | High-frequency state replacement where only the latest heartbeat or cart snapshot is relevant. |
+| **Static configurations & reference catalogs** *(e.g., Dispenser flow rates, feature flags)* | **`StateStoreEngine`** | Enforces atomic duplicate prevention on registration (`putIfAbsent`) and safe updates (`replace`) without sequence overhead. |
+| **CQRS read projections & materialized views** *(e.g., pre-computed dashboard summaries)* | **`StateStoreEngine`** | Read models are disposable snapshots rebuilt from events; fast key lookup (`findById`) and idempotent upsert (`put`) suffice. |
+| **Idempotency / deduplication registries** *(e.g., tracking processed webhook IDs)* | **`StateStoreEngine`** | Provides atomic insert-once registration (`putIfAbsent`) and O(1) existence checks (`exists(id)`). |
+| **Ephemeral session tokens or heartbeats** *(e.g., active POS terminal status)* | **`StateStoreEngine`** | High-frequency state replacement (`put` / `replace`) where only the latest heartbeat or cart snapshot is relevant. |
 
 ---
 
@@ -264,12 +362,15 @@ List<String> history = engine.stream(streamId);     // unmodifiable ["TAP_OPENED
 
 ### 2. Mutable State Store Engine (`StateStoreEngine`)
 
-A thread-safe, null-safe key-value state store for configuration registries,
-projections, and entity snapshots.
+A thread-safe, null-safe key-value state store following JSR-107 /
+`ConcurrentMap` semantics for configuration registries, projections, and entity
+snapshots.
 
 ```java
 import com.sugarcoatlabs.persistence.Jdk;
 import com.sugarcoatlabs.persistence.PersistenceEngines;
+import com.sugarcoatlabs.persistence.exception.DuplicateEntityException;
+import com.sugarcoatlabs.persistence.exception.EntityNotFoundException;
 import com.sugarcoatlabs.persistence.state.StateStoreEngine;
 
 import java.util.List;
@@ -281,16 +382,54 @@ record TapConfig(String id, double flowRate) {}
 StateStoreEngine<String, TapConfig> registry =
         PersistenceEngines.using(Jdk.inMemory()).stateStore();
 
-// 2. Save (idempotent upsert) & query
-registry.save("tap-1", new TapConfig("tap-1", 0.064));
+// 2. Conditional insert (putIfAbsent), conditional update (replace), and upsert (put)
+registry.putIfAbsent("tap-1", new TapConfig("tap-1", 0.064)); // throws DuplicateEntityException if exists
+registry.replace("tap-1", new TapConfig("tap-1", 0.128));     // throws EntityNotFoundException if missing
+registry.put("tap-2", new TapConfig("tap-2", 0.256));         // idempotent last-write-wins upsert
 
+// 3. Query & delete
 Optional<TapConfig> config = registry.findById("tap-1");
 boolean exists = registry.exists("tap-1");
 List<TapConfig> allConfigs = registry.findAll(); // unmodifiable snapshot
 boolean removed = registry.deleteById("tap-1"); // true if entry existed
 ```
 
----
+### 3. Ergonomic State-Store Views (`RepositoryStateStore` & `EntityStateStore`)
+
+Adapt any `StateStoreEngine` realization (in-memory or external database) into
+Spring Data repository or Jakarta Persistence (`EntityManager`) conventions
+without altering the underlying storage engine:
+
+```java
+import com.sugarcoatlabs.persistence.Jdk;
+import com.sugarcoatlabs.persistence.PersistenceEngines;
+import com.sugarcoatlabs.persistence.state.EntityStateStore;
+import com.sugarcoatlabs.persistence.state.RepositoryStateStore;
+import com.sugarcoatlabs.persistence.state.StateStoreEngine;
+
+StateStoreEngine<String, TapConfig> baseStore =
+        PersistenceEngines.using(Jdk.inMemory()).stateStore();
+
+// 1. Spring Data Repository-style facade
+RepositoryStateStore<String, TapConfig> repoView =
+        RepositoryStateStore.adapting(baseStore);
+
+repoView.insert("tap-1", new TapConfig("tap-1", 0.064));
+repoView.update("tap-1", new TapConfig("tap-1", 0.128));
+repoView.save("tap-2", new TapConfig("tap-2", 0.256));
+boolean existsById = repoView.existsById("tap-1");
+
+// 2. Jakarta Persistence (JPA) EntityManager-style facade
+EntityStateStore<String, TapConfig> jpaView =
+        EntityStateStore.adapting(baseStore);
+
+jpaView.persist("tap-3", new TapConfig("tap-3", 0.512));
+
+jpaView.replace("tap-3", new TapConfig("tap-3", 0.640));
+jpaView.merge("tap-4", new TapConfig("tap-4", 0.768));
+boolean contains = jpaView.contains("tap-3");
+jpaView.remove("tap-3");
+```
 
 ## 🏛 Hexagonal Architecture Integration
 
@@ -350,9 +489,9 @@ public class InMemoryTapEventStore
 ### 2. Configuration Registry Adapter (`StateStoreEngine`)
 
 Similarly, a registry adapter bridges your domain port (`TapRegistryPort`) to
-`StateStoreEngine<String, Tap>`, extracting the entity key (`tap.id()`) and
-enforcing domain-level uniqueness rules (such as preventing duplicate device
-registrations) at the adapter boundary:
+`StateStoreEngine<String, Tap>`, using atomic `putIfAbsent` and translating
+`DuplicateEntityException` into a domain-specific exception without non-atomic
+check-then-act guards:
 
 ```java
 @Component
@@ -365,10 +504,11 @@ public class InMemoryTapRegistry implements TapRegistryPort {
     @Override
     public void save(Tap tap) {
         Objects.requireNonNull(tap, "Tap must not be null");
-        if (engine.exists(tap.id())) {
+        try {
+            engine.putIfAbsent(tap.id(), tap);
+        } catch (DuplicateEntityException ex) {
             throw new DuplicateTapException(tap.id());
         }
-        engine.save(tap.id(), tap);
     }
 
     @Override
@@ -405,11 +545,15 @@ src/main/java
       │    └── EventStreamEngine.java        <-- [Exported] Append-Only Event Log Contract
       ├── state/
       │    ├── package-info.java
-      │    └── StateStoreEngine.java         <-- [Exported] Mutable Latest-State Contract
+      │    ├── StateStoreEngine.java         <-- [Exported] Canonical JSR-107 State Contract
+      │    ├── RepositoryStateStore.java     <-- [Exported] Spring Data Repository-Style View
+      │    └── EntityStateStore.java         <-- [Exported] Jakarta Persistence (JPA)-Style View
       ├── exception/
       │    ├── package-info.java
       │    ├── OptimisticConcurrencyException.java <-- [Exported]
-      │    └── DuplicateEventException.java        <-- [Exported]
+      │    ├── DuplicateEventException.java        <-- [Exported]
+      │    ├── DuplicateEntityException.java       <-- [Exported]
+      │    └── EntityNotFoundException.java        <-- [Exported]
       ├── impl/
       │    ├── package-info.java
       │    ├── InMemoryEventStream.java      <-- [Unexported] Pure-JDK Event Stream Realization
@@ -470,6 +614,9 @@ implementation 'com.sugarcoatlabs:persistence-engines-core:1.0.0-SNAPSHOT'
 - **Atomic Validation Order:** Sequence number checks execute strictly before
   idempotency registration inside the partition lock, preventing failed sequence
   checks from polluting the deduplication registry.
+- **Atomic Conditional State Writes:** `InMemoryStateStore` delegates
+  `putIfAbsent` and `replace` directly to `ConcurrentHashMap#putIfAbsent` and
+  `ConcurrentHashMap#replace`, eliminating check-then-act race conditions.
 - **Lock-Free Snapshot Reads:** `stream(S)` and `findAll()` return unmodifiable
   snapshots (`List.copyOf(...)`), preventing external callers from mutating
   internal state or triggering `ConcurrentModificationException`.
@@ -492,7 +639,7 @@ implementation 'com.sugarcoatlabs:persistence-engines-core:1.0.0-SNAPSHOT'
 
 See the **[Implementation Guide](IMPLEMENTATION_GUIDE.md)** for full details on:
 - JPMS visibility boundaries and forbidden internal types
-- Mandatory behavioral invariants (OCC, global idempotency, 1-indexed sequences, read-your-writes consistency)
+- Mandatory behavioral invariants (OCC, global idempotency, atomic conditional writes, 1-indexed sequences, read-your-writes consistency)
 - Maven `test-jar` export/import configuration and minimal `pom.xml` templates
 
 ---

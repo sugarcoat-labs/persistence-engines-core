@@ -1,35 +1,44 @@
 # Implementation Guide
 
-**One Behavioral Contract, Technology Realizations via TCK.**
+**One Behavioral Contract, Many Technology Realizations via TCK.**
 
-`persistence-engines-core` fournit des contrats agnostiques (`EventStreamEngine` et `StateStoreEngine`) validés par un Technology Compatibility Kit (TCK). Les réalisations tierces (DynamoDB, PostgreSQL, etc.) doivent implémenter ces contrats et passer la suite TCK.
-
----
-
-## 1. Frontières Architecturales et JPMS
-
-- **Contrats publics exportés (`core`) :** `PersistenceEngines`, `PersistencePipeline`, `EventStreamEngine`, `StateStoreEngine`, et les exceptions associées (`OptimisticConcurrencyException`, `DuplicateEventException`).
-- **Point d'entrée fluent :** Chaque module fournit un point d'entrée implémentant `PersistencePipeline` (ex. `PersistenceEngines.using(DynamoDb.client(client)).table("...").eventStream(codec)`).
-- **Isolation interne :** Les classes concrètes doivent résider dans un sous-package non exporté `.impl` (ex. `com.sugarcoatlabs.persistence.dynamodb.impl`) en évitant les types internes du noyau.
+`persistence-engines-core` provides domain-agnostic persistence contracts (`EventStreamEngine` and the JSR-107-aligned `StateStoreEngine`, plus zero-overhead Spring Data and JPA ergonomic views) validated by a portable Technology Compatibility Kit (TCK). Third-party technology realizations (Amazon DynamoDB, PostgreSQL, MySQL, MongoDB, etc.) implement the canonical engine interfaces and verify 100% behavioral parity against the TCK suite.
 
 ---
 
-## 2. Sémantiques Comportementales Obligatoires
+## 1. Architectural & JPMS Boundaries
 
-- **Sémantique générale :** Échec rapide (`IllegalArgumentException`) sur les clés ou charges nulles/vides, retours par défaut sécurisés pour les clés absentes, collections non modifiables et forte consistance.
-- **`EventStreamEngine` :** Séquences commençant à `1L`, validation avant déduplication globale, gestion de `OptimisticConcurrencyException` et `DuplicateEventException`, doubles écritures atomiques.
-- **`StateStoreEngine` :** Upserts idempotents via `save(id, entity)` et retours booléens précis pour `deleteById(id)`.
+- **Exported Public Contracts (`core`):**
+    - Entry point & pipeline: `PersistenceEngines`, `PersistencePipeline`
+    - Engine contracts: `EventStreamEngine`, `StateStoreEngine`
+    - Ergonomic state-store views: `RepositoryStateStore` (Spring Data style), `EntityStateStore` (JPA style)
+    - Domain-agnostic exceptions: `OptimisticConcurrencyException`, `DuplicateEventException`, `DuplicateEntityException`, `EntityNotFoundException`
+- **Single-Engine Realization Rule:** External database modules **only implement `StateStoreEngine` and `EventStreamEngine`**. They never need to implement `RepositoryStateStore` or `EntityStateStore`, because those facades wrap any `StateStoreEngine` automatically via `RepositoryStateStore.adapting(...)` and `EntityStateStore.adapting(...)`.
+- **Fluent Entry Point:** Each technology module exposes an entry point implementing `PersistencePipeline` (e.g., `PersistenceEngines.using(DynamoDb.client(client)).table("...").eventStream(codec)`).
+- **Internal Encapsulation:** Concrete implementations must reside in an unexported `.impl` subpackage (e.g., `com.sugarcoatlabs.persistence.dynamodb.impl`) without exposing internal core types.
+
+---
+
+## 2. Mandatory Behavioral Semantics
+
+- **General Invariants:** Fail-fast validation (`IllegalArgumentException`) on `null` or blank keys and `null` entities, safe empty defaults (`0L`, `Optional.empty()`, `List.of()`) for missing keys, unmodifiable snapshot collections, and read-your-writes consistency.
+- **`EventStreamEngine`:** 1-indexed sequences (`0L` = empty stream), sequence validation strictly before global `eventId` deduplication, atomic dual-write enforcement, and accurate translation into `OptimisticConcurrencyException` and `DuplicateEventException`.
+- **`StateStoreEngine` (JSR-107 / `ConcurrentMap` Semantics):**
+    - **`putIfAbsent(id, entity)`:** Atomically inserts only if `id` does not exist; throws `DuplicateEntityException(id)` on key collision (e.g., DynamoDB `attribute_not_exists(PK)`, SQL `INSERT` unique constraint `23505`/`1062`, MongoDB `insertOne` `E11000`).
+    - **`replace(id, entity)`:** Atomically updates only if `id` already exists; throws `EntityNotFoundException(id)` if absent (e.g., DynamoDB `attribute_exists(PK)`, SQL `UPDATE ... WHERE id = ?`, MongoDB `replaceOne(..., { upsert: false })`).
+    - **Identical-Payload `replace()` Rule:** Replacing an existing key with a payload equal to the stored value **must succeed**. SQL adapters (especially MySQL) must not confuse `0` modified rows on an existing row with a missing key, and MongoDB adapters must check `matchedCount == 0` rather than `modifiedCount == 0`.
+    - **`put(id, entity)`:** Atomically inserts or overwrites (idempotent last-write-wins upsert).
+    - **`deleteById(id)`:** Atomically deletes the entry and returns `true` only if an entry was actually removed.
 
 ---
 
-## 3. Réutilisation du TCK et Configuration Maven
+## 3. TCK Reuse & Maven Configuration
 
-- **Exportation TCK :** `persistence-engines-core` produit un artifact `test-jar` filtré sur `com/sugarcoatlabs/persistence/tck/**`.
-- **Dépendance consommateur :** Inclure l'artifact core et son `test-jar` en scope `test`, puis étendre `EventStreamEngineContractTest` et `StateStoreEngineContractTest`.
-
-> *Consultez le fichier source complet pour l'implémentation détaillée et le modèle `pom.xml` complet de l'Annexe A.*
+- **TCK Export:** `persistence-engines-core` publishes a `test-jar` filtered on `com/sugarcoatlabs/persistence/tck/**` containing `EventStreamEngineContractTest`, `StateStoreEngineContractTest`, `RepositoryStateStoreContractTest`, and `EntityStateStoreContractTest`.
+- **Consumer Dependency:** Import `persistence-engines-core` alongside its `test-jar` in `test` scope, then extend `EventStreamEngineContractTest` and `StateStoreEngineContractTest` (and optionally `RepositoryStateStoreContractTest` / `EntityStateStoreContractTest` wrapping your concrete `StateStoreEngine`).
 
 ---
+
 ## Annex A: Minimal `pom.xml` Template for Dependent Realization Projects
 
 ```xml
@@ -53,17 +62,23 @@
          * com.sugarcoatlabs.persistence.PersistenceEngines
          * com.sugarcoatlabs.persistence.PersistencePipeline
 
-     - Engine Interfaces:
+     - Engine Interfaces & Ergonomic State-Store Views:
          * com.sugarcoatlabs.persistence.event.EventStreamEngine
          * com.sugarcoatlabs.persistence.state.StateStoreEngine
+         * com.sugarcoatlabs.persistence.state.RepositoryStateStore
+         * com.sugarcoatlabs.persistence.state.EntityStateStore
 
      - Exceptions:
          * com.sugarcoatlabs.persistence.exception.OptimisticConcurrencyException
          * com.sugarcoatlabs.persistence.exception.DuplicateEventException
+         * com.sugarcoatlabs.persistence.exception.DuplicateEntityException
+         * com.sugarcoatlabs.persistence.exception.EntityNotFoundException
          
      - TCK Abstract Test Suites (imported via `test-jar`):
-         * com.sugarcoatlabs.persistence.tck.event.EventStreamEngineContractTest
-         * com.sugarcoatlabs.persistence.tck.state.StateStoreEngineContractTest
+         * com.sugarcoatlabs.persistence.tck.EventStreamEngineContractTest
+         * com.sugarcoatlabs.persistence.tck.StateStoreEngineContractTest
+         * com.sugarcoatlabs.persistence.tck.RepositoryStateStoreContractTest
+         * com.sugarcoatlabs.persistence.tck.EntityStateStoreContractTest
 
   2. TO BE IMPLEMENTED IN THIS MODULE (`persistence-engines-dynamodb`):
      - Production (`src/main/java`):
@@ -85,7 +100,9 @@
 
          * com/sugarcoatlabs/persistence/dynamodb/impl/DynamoDbStateStore.java
              Encapsulated realization of `StateStoreEngine` backed by DynamoDB
-             `PutItem`, `GetItem` (`ConsistentRead=true`), `Scan`, and `DeleteItem`.
+             `PutItem` (`attribute_not_exists(PK)` for `putIfAbsent`,
+             `attribute_exists(PK)` for `replace`, unconditional for `put`),
+             `GetItem` (`ConsistentRead=true`), `Scan`, and `DeleteItem`.
 
      - Integration Tests (`src/test/java`):
 
@@ -96,7 +113,8 @@
 
          * DynamoDbStateStoreIT.java
              Concrete test class extending `StateStoreEngineContractTest` from the
-             imported TCK, verifying state store invariants against DynamoDB Local /
+             imported TCK, verifying state store invariants (including concurrent
+             `putIfAbsent` races and conditional `replace`) against DynamoDB Local /
              Testcontainers.
 
   ============================================================================

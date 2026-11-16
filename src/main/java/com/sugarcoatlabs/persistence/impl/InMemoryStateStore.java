@@ -1,5 +1,7 @@
 package com.sugarcoatlabs.persistence.impl;
 
+import com.sugarcoatlabs.persistence.exception.DuplicateEntityException;
+import com.sugarcoatlabs.persistence.exception.EntityNotFoundException;
 import com.sugarcoatlabs.persistence.lifecycle.ResettableEngine;
 import com.sugarcoatlabs.persistence.state.StateStoreEngine;
 
@@ -25,11 +27,24 @@ public final class InMemoryStateStore<ID, T> implements StateStoreEngine<ID, T>,
     public InMemoryStateStore() {}
 
     @Override
-    public void save(ID id, T entity) {
-        validateKey(id, "id");
-        if (entity == null) {
-            throw new IllegalArgumentException("entity must not be null");
+    public void putIfAbsent(ID id, T entity) {
+        validateWriteArgs(id, entity);
+        if (storage.putIfAbsent(id, entity) != null) {
+            throw new DuplicateEntityException(id);
         }
+    }
+
+    @Override
+    public void replace(ID id, T entity) {
+        validateWriteArgs(id, entity);
+        if (storage.replace(id, entity) == null) {
+            throw new EntityNotFoundException(id);
+        }
+    }
+
+    @Override
+    public void put(ID id, T entity) {
+        validateWriteArgs(id, entity);
         storage.put(id, entity);
     }
 
@@ -59,6 +74,13 @@ public final class InMemoryStateStore<ID, T> implements StateStoreEngine<ID, T>,
     @Override
     public void clear() {
         storage.clear();
+    }
+
+    private static void validateWriteArgs(Object id, Object entity) {
+        validateKey(id, "id");
+        if (entity == null) {
+            throw new IllegalArgumentException("entity must not be null");
+        }
     }
 
     private static void validateKey(Object key, String paramName) {
