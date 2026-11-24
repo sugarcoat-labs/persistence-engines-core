@@ -57,7 +57,7 @@
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
         <junit.version>5.11.4</junit.version>
         <assertj.version>3.27.3</assertj.version>
-        <github.packages.url>https://maven.pkg.github.com/sugarcoat-labs</github.packages.url>
+        <github.packages.url>https://maven.pkg.github.com/sugarcoat-labs/persistence-engines-core</github.packages.url>
     </properties>
 
     <dependencies>
