@@ -5,6 +5,13 @@
     <modelVersion>4.0.0</modelVersion>
 
     <!--
+    SPEC (Source of Truth):
+    - Module: `com.sugarcoatlabs:persistence-engines-core` (`1.0.0-SNAPSHOT`), a pure-JDK 24 JPMS library and filtered TCK `test-jar`.
+    - Boundaries: Zero compile/runtime dependencies; only JUnit 5 and AssertJ are allowed in `test` scope, and only `com/sugarcoatlabs/persistence/tck/**` is packaged into the `test-jar`.
+    - Publishing: Deploys releases and snapshots to GitHub Packages at `https://maven.pkg.github.com/sugarcoat-labs` using server ID `github-sugarcoat-labs`.
+    -->
+
+    <!--
     =======================================================================
     TECHNICAL SPECIFICATION - PLUGGABLE MODULE & TCK EXPORTER
     =======================================================================
@@ -30,7 +37,8 @@
       excluding all pure-JDK-specific tests.
     - Local & Repository Publication:
       Run `mvn clean install` to build and publish both artifacts to the
-      local Maven repository (`~/.m2/repository`):
+      local Maven repository (`~/.m2/repository`), or `mvn -B -DskipTests deploy`
+      in CI to publish to GitHub Packages:
         1. `persistence-engines-core-1.0.0-SNAPSHOT.jar` (Main JPMS module)
         2. `persistence-engines-core-1.0.0-SNAPSHOT-tests.jar` (Filtered TCK)
     =======================================================================
@@ -49,6 +57,7 @@
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
         <junit.version>5.11.4</junit.version>
         <assertj.version>3.27.3</assertj.version>
+        <github.packages.url>https://maven.pkg.github.com/sugarcoat-labs</github.packages.url>
     </properties>
 
     <dependencies>
@@ -65,6 +74,19 @@
             <scope>test</scope>
         </dependency>
     </dependencies>
+
+    <distributionManagement>
+        <repository>
+            <id>github-sugarcoat-labs</id>
+            <name>GitHub Packages - sugarcoat-labs</name>
+            <url>${github.packages.url}</url>
+        </repository>
+        <snapshotRepository>
+            <id>github-sugarcoat-labs</id>
+            <name>GitHub Packages Snapshots - sugarcoat-labs</name>
+            <url>${github.packages.url}</url>
+        </snapshotRepository>
+    </distributionManagement>
 
     <build>
         <plugins>
@@ -98,6 +120,34 @@
                             <includes>
                                 <include>com/sugarcoatlabs/persistence/tck/**</include>
                             </includes>
+                        </configuration>
+                    </execution>
+                </executions>
+            </plugin>
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-enforcer-plugin</artifactId>
+                <version>3.5.0</version>
+                <executions>
+                    <execution>
+                        <id>enforce-boundaries</id>
+                        <goals>
+                            <goal>enforce</goal>
+                        </goals>
+                        <configuration>
+                            <rules>
+                                <requireJavaVersion>
+                                    <version>[24,)</version>
+                                </requireJavaVersion>
+                                <restrictImports>
+                                    <reason>Keep persistence-engines-core free of heavy frameworks and external drivers.</reason>
+                                    <bannedImports>
+                                        <bannedImport>org.springframework.**</bannedImport>
+                                        <bannedImport>io.micronaut.**</bannedImport>
+                                        <bannedImport>io.quarkus.**</bannedImport>
+                                    </bannedImports>
+                                </restrictImports>
+                            </rules>
                         </configuration>
                     </execution>
                 </executions>
