@@ -34,6 +34,7 @@ jobs:
           cache: 'maven'
           server-id: github-sugarcoat-labs
           server-username: ${{ github.actor }}
+          server-password: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Build, run TCK tests, and generate Javadoc
         env:
