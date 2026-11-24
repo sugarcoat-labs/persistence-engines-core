@@ -6,47 +6,47 @@
 
     <!--
     SPEC (Source of Truth):
-    - Module: `com.sugarcoatlabs:persistence-engines-core` (`1.0.0-SNAPSHOT`), a pure-JDK 24 JPMS library and filtered TCK `test-jar`[cite: 5].
-    - Boundaries: Zero compile/runtime dependencies; only JUnit 5 and AssertJ are allowed in `test` scope, and only `com/sugarcoatlabs/persistence/tck/**` is packaged into the `test-jar`[cite: 5].
-    - Publishing: Deploys releases and snapshots to GitHub Packages at `https://maven.pkg.github.com/sugarcoat-labs` using server ID `github-sugarcoat-labs`.
+    - Module: com.sugarcoatlabs:persistence-engines-core (1.0.0), a pure-JDK 24 JPMS library and filtered TCK test-jar.
+    - Boundaries: Zero compile/runtime dependencies; only JUnit 5 and AssertJ are allowed in test scope, and only com/sugarcoatlabs/persistence/tck/** is packaged into the test-jar.
+    - Publishing: Deploys release artifacts to GitHub Packages at https://maven.pkg.github.com/sugarcoat-labs using server ID github-sugarcoat-labs.
     -->
 
     <!--
     =======================================================================
     TECHNICAL SPECIFICATION - PLUGGABLE MODULE & TCK EXPORTER
     =======================================================================
-    Project Name : persistence-engines-core[cite: 5]
-    Type         : Pluggable & Reusable JPMS JAR Module + TCK Test-JAR[cite: 5]
+    Project Name : persistence-engines-core
+    Type         : Pluggable & Reusable JPMS JAR Module + TCK Test-JAR
     Description  : Provides lightweight, high-performance, and thread-safe
     persistence engines for Hexagonal Architecture (without
     framework overhead), plus the portable Technology Compatibility Kit
-    (TCK) for external database realizations[cite: 5].
+    (TCK) for external database realizations.
 
     Architecture & Compliance Requirements:
-    - Runtime Environment : Java 24+ (Strict minimum compiler compliance & JPMS)[cite: 5]
+    - Runtime Environment : Java 24+ (Strict minimum compiler compliance & JPMS)
     - Framework Policy    : Heavy frameworks (Spring Boot, Micronaut, Quarkus)
       and external database drivers are explicitly excluded to eliminate runtime
-      overhead[cite: 5].
+      overhead.
     - Concurrency Model   : Virtual-thread-friendly striped ReentrantLock
-      partitions and lock-free unmodifiable snapshots[cite: 5].
+      partitions and lock-free unmodifiable snapshots.
     - Dependency Policy   : ZERO compile/runtime dependencies. Only testing
       libraries (JUnit 5 & AssertJ) are permitted, and strictly restricted to
-      <scope>test</scope> so the final production JAR remains 100% pure JDK[cite: 5].
+      <scope>test</scope> so the final production JAR remains 100% pure JDK.
     - TCK Export Policy   : Packages ONLY abstract contract test suites under
-      `com/sugarcoatlabs/persistence/tck/**` into the published `test-jar`,
-      excluding all pure-JDK-specific tests[cite: 5].
+      com/sugarcoatlabs/persistence/tck/** into the published test-jar,
+      excluding all pure-JDK-specific tests.
     - Local & Repository Publication:
       Run `mvn clean install` to build and publish both artifacts to the
-      local Maven repository (`~/.m2/repository`), or `mvn -B -DskipTests deploy`
+      local Maven repository (~/.m2/repository), or `mvn -B -DskipTests deploy`
       in CI to publish to GitHub Packages:
-        1. `persistence-engines-core-1.0.0-SNAPSHOT.jar` (Main JPMS module)[cite: 5]
-        2. `persistence-engines-core-1.0.0-SNAPSHOT-tests.jar` (Filtered TCK)[cite: 5]
+        1. persistence-engines-core-1.0.0.jar (Main JPMS module)
+        2. persistence-engines-core-1.0.0-tests.jar (Filtered TCK)
     =======================================================================
     -->
 
     <groupId>com.sugarcoatlabs</groupId>
     <artifactId>persistence-engines-core</artifactId>
-    <version>1.0.0-SNAPSHOT</version>
+    <version>1.0.0</version>
     <packaging>jar</packaging>
 
     <name>persistence-engines-core</name>
