@@ -32,9 +32,27 @@ jobs:
           java-version: '24'
           distribution: 'temurin'
           cache: 'maven'
-          server-id: github-sugarcoat-labs
-          server-username: ${{ github.repository_owner }}
-          server-password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Configure Maven settings for GitHub Packages
+        shell: bash
+        env:
+          GITHUB_ACTOR: ${{ github.actor }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          mkdir -p "$HOME/.m2"
+          cat > "$HOME/.m2/settings.xml" <<'EOF'
+          <settings xmlns="http://maven.apache.org/SETTINGS/1.0.0"
+                    xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+                    xsi:schemaLocation="http://maven.apache.org/SETTINGS/1.0.0 http://maven.apache.org/xsd/settings-1.0.0.xsd">
+            <servers>
+              <server>
+                <id>github-sugarcoat-labs</id>
+                <username>${env.GITHUB_ACTOR}</username>
+                <password>${env.GITHUB_TOKEN}</password>
+              </server>
+            </servers>
+          </settings>
+          EOF
 
       - name: Build, run TCK tests, and generate Javadoc
         env:
@@ -45,4 +63,4 @@ jobs:
         if: github.event_name == 'push' && github.ref == 'refs/heads/main'
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: mvn -B -DskipTests -e deploy
+        run: mvn -B -DskipTests deploy
