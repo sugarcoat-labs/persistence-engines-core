@@ -6,8 +6,8 @@
 
     <!--
     SPEC (Source of Truth):
-    - Module: `com.sugarcoatlabs:persistence-engines-core` (`1.0.0-SNAPSHOT`), a pure-JDK 24 JPMS library and filtered TCK `test-jar`.
-    - Boundaries: Zero compile/runtime dependencies; only JUnit 5 and AssertJ are allowed in `test` scope, and only `com/sugarcoatlabs/persistence/tck/**` is packaged into the `test-jar`.
+    - Module: `com.sugarcoatlabs:persistence-engines-core` (`1.0.0-SNAPSHOT`), a pure-JDK 24 JPMS library and filtered TCK `test-jar`[cite: 5].
+    - Boundaries: Zero compile/runtime dependencies; only JUnit 5 and AssertJ are allowed in `test` scope, and only `com/sugarcoatlabs/persistence/tck/**` is packaged into the `test-jar`[cite: 5].
     - Publishing: Deploys releases and snapshots to GitHub Packages at `https://maven.pkg.github.com/sugarcoat-labs` using server ID `github-sugarcoat-labs`.
     -->
 
@@ -15,32 +15,32 @@
     =======================================================================
     TECHNICAL SPECIFICATION - PLUGGABLE MODULE & TCK EXPORTER
     =======================================================================
-    Project Name : persistence-engines-core
-    Type         : Pluggable & Reusable JPMS JAR Module + TCK Test-JAR
+    Project Name : persistence-engines-core[cite: 5]
+    Type         : Pluggable & Reusable JPMS JAR Module + TCK Test-JAR[cite: 5]
     Description  : Provides lightweight, high-performance, and thread-safe
     persistence engines for Hexagonal Architecture (without
     framework overhead), plus the portable Technology Compatibility Kit
-    (TCK) for external database realizations.
+    (TCK) for external database realizations[cite: 5].
 
     Architecture & Compliance Requirements:
-    - Runtime Environment : Java 24+ (Strict minimum compiler compliance & JPMS)
+    - Runtime Environment : Java 24+ (Strict minimum compiler compliance & JPMS)[cite: 5]
     - Framework Policy    : Heavy frameworks (Spring Boot, Micronaut, Quarkus)
       and external database drivers are explicitly excluded to eliminate runtime
-      overhead.
+      overhead[cite: 5].
     - Concurrency Model   : Virtual-thread-friendly striped ReentrantLock
-      partitions and lock-free unmodifiable snapshots.
+      partitions and lock-free unmodifiable snapshots[cite: 5].
     - Dependency Policy   : ZERO compile/runtime dependencies. Only testing
       libraries (JUnit 5 & AssertJ) are permitted, and strictly restricted to
-      <scope>test</scope> so the final production JAR remains 100% pure JDK.
+      <scope>test</scope> so the final production JAR remains 100% pure JDK[cite: 5].
     - TCK Export Policy   : Packages ONLY abstract contract test suites under
       `com/sugarcoatlabs/persistence/tck/**` into the published `test-jar`,
-      excluding all pure-JDK-specific tests.
+      excluding all pure-JDK-specific tests[cite: 5].
     - Local & Repository Publication:
       Run `mvn clean install` to build and publish both artifacts to the
       local Maven repository (`~/.m2/repository`), or `mvn -B -DskipTests deploy`
       in CI to publish to GitHub Packages:
-        1. `persistence-engines-core-1.0.0-SNAPSHOT.jar` (Main JPMS module)
-        2. `persistence-engines-core-1.0.0-SNAPSHOT-tests.jar` (Filtered TCK)
+        1. `persistence-engines-core-1.0.0-SNAPSHOT.jar` (Main JPMS module)[cite: 5]
+        2. `persistence-engines-core-1.0.0-SNAPSHOT-tests.jar` (Filtered TCK)[cite: 5]
     =======================================================================
     -->
 
@@ -139,14 +139,15 @@
                                 <requireJavaVersion>
                                     <version>[24,)</version>
                                 </requireJavaVersion>
-                                <restrictImports>
-                                    <reason>Keep persistence-engines-core free of heavy frameworks and external drivers.</reason>
-                                    <bannedImports>
-                                        <bannedImport>org.springframework.**</bannedImport>
-                                        <bannedImport>io.micronaut.**</bannedImport>
-                                        <bannedImport>io.quarkus.**</bannedImport>
-                                    </bannedImports>
-                                </restrictImports>
+                                <bannedDependencies>
+                                    <message>Keep persistence-engines-core free of heavy frameworks and external drivers.</message>
+                                    <excludes>
+                                        <exclude>org.springframework:*</exclude>
+                                        <exclude>org.springframework.boot:*</exclude>
+                                        <exclude>io.micronaut:*</exclude>
+                                        <exclude>io.quarkus:*</exclude>
+                                    </excludes>
+                                </bannedDependencies>
                             </rules>
                         </configuration>
                     </execution>
